@@ -1,10 +1,12 @@
-import { activeEffect } from "./effect"
+import { track, trigger } from "./reactiveEffect";
+import { isObject } from "@vue/shared";
+import { reactive } from './reactive'
 
 export enum ReactiveFlags {
   IS_REACTIVE = '__v_isReactive'
 }
 
-export const reactiveMap = new WeakMap() 
+export const reactiveMap = new WeakMap()
 
 export const mutableHandlers: ProxyHandler<any> = {
   get(target, property, receiver) {
@@ -12,14 +14,27 @@ export const mutableHandlers: ProxyHandler<any> = {
       return true
     }
 
-    console.log(activeEffect, property)
+    track(target, property)
 
     // 使用proxy的时候搭配Reflect来使用，解决this问题
     // 取值的时候让这个属性和effect产生关系
-    return Reflect.get(target, property, receiver)
+    let res = Reflect.get(target, property, receiver);
+    
+    if (isObject(res)) return reactive(res);
+
+    return res;
   },
   set(target, property, value, receiver) {
+
+    let oldValue = target[property];
+
     // 更新数据
-    return Reflect.set(target, property, value, receiver)
+    let result = Reflect.set(target, property, value, receiver);
+
+    if (oldValue !== value) {
+      trigger(target, property, value, oldValue)
+    }
+
+    return result
   }
 }
