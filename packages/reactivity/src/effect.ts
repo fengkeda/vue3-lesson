@@ -1,4 +1,27 @@
+import { DirtyLevels } from "./constants";
 export let activeEffect = undefined;
+
+// 导出一个名为 effect 的函数，该函数接收一个函数作为参数
+export function effect(fn, options) {
+  // 创建一个新的 ReactiveEffect 实例，传入两个参数：
+  // 1. 要执行的函数 fn
+  // 2. 一个回调函数，用于在依赖变化时重新运行 _effect
+  const _effect = new ReactiveEffect(fn, () => {
+    // 在回调函数中，调用 _effect 的 run 方法，重新执行 effect
+    _effect.run();
+  });
+
+  _effect.run();
+
+  if (options) {
+    Object.assign(_effect, options)
+  }
+
+  // 返回一个函数，该函数用于执行 _effect 的 run 方法
+  const runner = _effect.run.bind(_effect);
+  runner.effect = _effect;
+  return runner;
+}
 
 function preCleanEffect(_effect) {
   _effect._depsLength = 0;
@@ -22,10 +45,20 @@ export class ReactiveEffect {
   public _depsLength = 0;
   public _running = 0
   public active = true; // 确保effect是响应式的
+  public _dirtyLevel = DirtyLevels.Dirty;
   constructor(public fn, public scheduler) {
   }
 
+  get dirty() {
+    return this._dirtyLevel === DirtyLevels.Dirty;
+  }
+  set dirty(value) {
+    this._dirtyLevel = value ? DirtyLevels.Dirty : DirtyLevels.NoDirty;
+  }
+
   run() {
+    this._dirtyLevel = DirtyLevels.NoDirty;
+
     if (!this.active) {
       return this.fn();
     }
@@ -56,28 +89,6 @@ function cleanDepEffect(dep, _effect) {
   }
 }
 
-// 导出一个名为 effect 的函数，该函数接收一个函数作为参数
-export function effect(fn, options) {
-  // 创建一个新的 ReactiveEffect 实例，传入两个参数：
-  // 1. 要执行的函数 fn
-  // 2. 一个回调函数，用于在依赖变化时重新运行 _effect
-  const _effect = new ReactiveEffect(fn, () => {
-    // 在回调函数中，调用 _effect 的 run 方法，重新执行 effect
-    _effect.run();
-  });
-
-  _effect.run();
-
-  if (options) {
-    Object.assign(_effect, options)
-  }
-
-  // 返回一个函数，该函数用于执行 _effect 的 run 方法
-  const runner = _effect.run.bind(_effect);
-  runner.effect = _effect;
-  return runner;
-}
-
 // 导出一个名为 trackEffect 的函数，该函数用于跟踪副作用（effect）的依赖关系
 export function trackEffect(_effect, dep) {
   // 收集时一个个收集的
@@ -102,6 +113,12 @@ export function trackEffect(_effect, dep) {
 export function triggerEffects(dep) {
   // 使用 for...of 循环遍历 dep 的键（即依赖项）
   for (const _effect of dep.keys()) {
+
+    // 如果当前的数据是不脏的，则重置为dirty
+    if (!_effect.dirty) {
+      _effect._dirtyLevel = DirtyLevels.Dirty;
+    }
+
     // 检查当前 _effect 是否有 scheduler 属性，如果有则调用 scheduler 方法
     // console.log('触发更新');
     if (_effect.scheduler) {
