@@ -8,34 +8,35 @@ export function ref(target) {
 }
 
 export function createRef(value) {
-  return new RefImp(value);
+  return new RefImpl(value);
 }
 
-class RefImp {
-  public __v_isRef = true;
-  public _value;
+class RefImpl {
+  public __v_isRef = true; // 标识是否是ref
+  public _value; // 保存原始值
+
+  public dep; // 用于收集对应的effect
   constructor(public rawValue) {
     this._value = toReactive(rawValue);
   }
 
-  get() {
+  get value() {
     trackRefValue(this)
     return this._value;
   }
-  set(newValue) {
+  set value(newValue) {
     if (newValue !== this.rawValue) {
-
-      triggerRefValue(this)
-
       this.rawValue = newValue;
       this._value = newValue;
+
+      triggerRefValue(this)
     }
   }
 }
 
 export function trackRefValue(ref) {
   if (activeEffect) {
-    trackEffect(activeEffect, (ref.dep = createDep(() => (ref.dep = undefined), 'undefined')))
+    trackEffect(activeEffect, (ref.dep = ref.dep || createDep(() => (ref.dep = undefined), 'undefined')))
   }
 }
 
