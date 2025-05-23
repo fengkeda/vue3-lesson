@@ -31,7 +31,9 @@ function preCleanEffect(_effect) {
 function postCleanEffect(effect) {
   // [flag,a,b,c]
   // [flag]  -> effect._depsLength = 1
+  // 如果effect的依赖列表长度大于effect._depsLength
   if (effect.deps.length > effect._depsLength) {
+    // 遍历effect的依赖列表，从effect._depsLength开始
     for (let i = effect._depsLength; i < effect.deps.length; i++) {
       cleanDepEffect(effect.deps[i], effect); // 删除映射表中对应的effect
     }
@@ -40,24 +42,35 @@ function postCleanEffect(effect) {
 }
 
 export class ReactiveEffect {
-  public _trackId = 0;
-  public deps = [];
+  public _trackId = 0; // 每次执行id 都是+1， 如果当前同一个effect执行，id就是相同的
+  public deps = []; // 存储依赖的集合
   public _depsLength = 0;
-  public _running = 0
+  public _running = 0 // 是否正在执行
   public active = true; // 确保effect是响应式的
-  public _dirtyLevel = DirtyLevels.Dirty;
+  public _dirtyLevel = DirtyLevels.Dirty; // 计算属性的脏值标记，默认是脏的
+
+  /**
+   * 
+   * @param fn 要执行的副作用函数
+   * @param scheduler  调度函数，用于在依赖发生变化时执行
+   */
   constructor(public fn, public scheduler) {
   }
 
+  // 获取脏数据状态
   get dirty() {
+    // 如果脏数据级别为Dirty，则返回true，否则返回false
     return this._dirtyLevel === DirtyLevels.Dirty;
   }
+  
+  // 设置dirty属性
   set dirty(value) {
+    // 如果value为true，则将_dirtyLevel设置为DirtyLevels.Dirty，否则设置为DirtyLevels.NoDirty
     this._dirtyLevel = value ? DirtyLevels.Dirty : DirtyLevels.NoDirty;
   }
 
   run() {
-    this._dirtyLevel = DirtyLevels.NoDirty;
+    this._dirtyLevel = DirtyLevels.NoDirty; // 每次执行完，都设置为NoDirty
 
     if (!this.active) {
       return this.fn();
@@ -65,7 +78,7 @@ export class ReactiveEffect {
     let lastEfect = activeEffect;
     try {
       activeEffect = this;
-      preCleanEffect(this);
+      preCleanEffect(this); // 清理依赖关系，并更新依赖列表的长度
       this._running++;
       return this.fn();
     }
@@ -114,6 +127,9 @@ export function triggerEffects(dep) {
   // 使用 for...of 循环遍历 dep 的键（即依赖项）
   for (const _effect of dep.keys()) {
 
+    // 调度队列
+    // queueJob(_effect)
+
     // 如果当前的数据是不脏的，则重置为dirty
     if (!_effect.dirty) {
       _effect._dirtyLevel = DirtyLevels.Dirty;
@@ -127,4 +143,33 @@ export function triggerEffects(dep) {
       }
     }
   }
+}
+
+
+// 调度队列，优化处理
+let queues = new Set();
+let isFlushing = false;
+let isFlushPending = false;
+
+function queueJob(effect) {
+  queues.add(effect);
+
+  if (!isFlushing && !isFlushPending) {
+    isFlushPending = true;
+    Promise.resolve().then(runQueue)
+  }
+}
+
+function runQueue() {
+  isFlushPending = false;
+  isFlushing = true;
+
+  for (const _effect of queues) {
+    if (_effect && (_effect as any).scheduler) {
+      if (!(_effect as any)._running) {
+        (_effect as any).scheduler();
+      }
+    }
+  }
+  queues.clear();
 }
